@@ -457,10 +457,11 @@ async def _prepare_video_references(
 
 
 def _exception_message(exc: BaseException) -> str:
-    if isinstance(exc, BaseExceptionGroup):
+    children = getattr(exc, "exceptions", None)
+    if children:
         messages = [
             _exception_message(child)
-            for child in exc.exceptions
+            for child in children
             if not isinstance(child, asyncio.CancelledError)
         ]
         return "; ".join(message for message in messages if message) or str(exc)
