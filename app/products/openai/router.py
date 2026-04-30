@@ -3,6 +3,7 @@
 import base64
 import binascii
 import mimetypes
+from pathlib import Path
 from typing import Annotated, AsyncGenerator, AsyncIterable, Literal
 
 import orjson
@@ -577,14 +578,29 @@ async def image_edits(
 @router.get("/files/video", tags=[_TAG_FILES])
 async def serve_video(id: str = Query(..., description="Video file ID")):
     """Serve a locally cached video by file ID."""
-    import re
-
-    if not re.fullmatch(r"[0-9a-f\-]{16,36}", id):
+    value = (id or "").strip()
+    if not value or Path(value).name != value:
         raise ValidationError("Invalid file ID", param="id")
 
-    path = video_files_dir() / f"{id}.mp4"
-    if path.exists():
-        return FileResponse(path, media_type="video/mp4")
+    allowed = {
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".mov": "video/quicktime",
+        ".m4v": "video/mp4",
+        ".avi": "video/x-msvideo",
+        ".mkv": "video/x-matroska",
+    }
+    video_dir = video_files_dir()
+    suffix = Path(value).suffix.lower()
+    candidates = [value] if suffix in allowed else [f"{value}.mp4"]
+    if not suffix:
+        candidates.extend(f"{value}{ext}" for ext in allowed if ext != ".mp4")
+
+    for name in candidates:
+        path = video_dir / name
+        media_type = allowed.get(path.suffix.lower())
+        if media_type and path.exists():
+            return FileResponse(path, media_type=media_type)
 
     raise ValidationError(f"Video {id!r} not found", param="id")
 
