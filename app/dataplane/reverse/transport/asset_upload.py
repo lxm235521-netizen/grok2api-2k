@@ -104,8 +104,30 @@ async def upload_file(
     Raises:
         ``UpstreamError`` on HTTP failure.
     """
+    cfg = get_config()
+    max_retries = max(0, cfg.get_int("asset.upload_max_retries", 2))
+    retry_delay_s = max(0.0, cfg.get_float("asset.upload_retry_delay", 1.0))
+    retry_codes = {
+        int(code)
+        for code in cfg.get_list("asset.upload_retry_status_codes", [403, 429, 502, 503])
+    }
+
     async with _get_upload_sem():
-        return await _upload_file_inner(token, filename, mime, b64)
+        for attempt in range(max_retries + 1):
+            try:
+                return await _upload_file_inner(token, filename, mime, b64)
+            except UpstreamError as exc:
+                if exc.status not in retry_codes or attempt >= max_retries:
+                    raise
+                delay_s = retry_delay_s * (attempt + 1)
+                logger.warning(
+                    "asset upload retry scheduled: filename={!r} attempt={}/{} status={} delay_s={}",
+                    filename, attempt + 1, max_retries, exc.status, delay_s,
+                )
+                if delay_s > 0:
+                    await asyncio.sleep(delay_s)
+
+    raise UpstreamError("Asset upload failed")
 
 
 async def _upload_file_inner(

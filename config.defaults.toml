@@ -151,6 +151,9 @@ timeout = 60
 # ==================== 资产配置 ====================
 [asset]
 upload_timeout = 60
+upload_max_retries = 2
+upload_retry_delay = 1.0
+upload_retry_status_codes = [403, 429, 502, 503]
 download_timeout = 60
 list_timeout = 60
 delete_timeout = 60

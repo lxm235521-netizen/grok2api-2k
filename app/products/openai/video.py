@@ -435,33 +435,25 @@ async def _prepare_video_references(
     token: str,
     input_references: list[dict[str, Any]],
 ) -> list[_VideoReference]:
-    """Upload multiple video references concurrently and preserve order."""
-    tasks = [
-        _prepare_video_reference(token, ref)
-        for ref in input_references
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    failures: list[tuple[int, BaseException]] = [
-        (index, result)
-        for index, result in enumerate(results)
-        if isinstance(result, BaseException)
-    ]
-    if failures:
-        index, exc = failures[0]
-        message = f"Video input reference {index + 1} failed: {_exception_message(exc)}"
-        if len(failures) > 1:
-            message += f" ({len(failures)} references failed)"
-        if isinstance(exc, ValidationError):
+    """Upload multiple video references sequentially and preserve order."""
+    results: list[_VideoReference] = []
+    for index, ref in enumerate(input_references):
+        try:
+            results.append(await _prepare_video_reference(token, ref))
+        except ValidationError as exc:
+            message = f"Video input reference {index + 1} failed: {_exception_message(exc)}"
             raise ValidationError(message, param=exc.param) from exc
-        if isinstance(exc, UpstreamError):
+        except UpstreamError as exc:
+            message = f"Video input reference {index + 1} failed: {_exception_message(exc)}"
             raise UpstreamError(
                 message,
                 status=exc.status,
                 body=exc.details.get("body", ""),
             ) from exc
-        raise UpstreamError(message) from exc
-
-    return [r for r in results if isinstance(r, _VideoReference)]
+        except Exception as exc:
+            message = f"Video input reference {index + 1} failed: {_exception_message(exc)}"
+            raise UpstreamError(message) from exc
+    return results
 
 
 def _exception_message(exc: BaseException) -> str:
